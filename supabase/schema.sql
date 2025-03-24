@@ -137,6 +137,11 @@ CREATE TABLE payments (
 -- Profiles table policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
+-- Allow the trigger to insert profiles (using service_role internally)
+CREATE POLICY "Database trigger can insert profiles" 
+  ON profiles FOR INSERT 
+  WITH CHECK (true);
+
 CREATE POLICY "Users can view their own profile"
   ON profiles FOR SELECT
   USING (auth.uid() = id);
@@ -260,9 +265,24 @@ CREATE POLICY "Staff and Admin can manage all payments"
 -- Create function to handle profile creation on signup
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  first_name_val TEXT;
+  last_name_val TEXT;
 BEGIN
+  -- Get first_name and last_name from user metadata if available
+  first_name_val := COALESCE(
+    (NEW.raw_user_meta_data->>'first_name')::TEXT,
+    ''
+  );
+  
+  last_name_val := COALESCE(
+    (NEW.raw_user_meta_data->>'last_name')::TEXT,
+    ''
+  );
+  
   INSERT INTO profiles (id, first_name, last_name, role)
-  VALUES (NEW.id, '', '', 'patient');
+  VALUES (NEW.id, first_name_val, last_name_val, 'patient');
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

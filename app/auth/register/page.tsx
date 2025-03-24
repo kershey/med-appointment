@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/context/AuthContext';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +30,8 @@ import {
 
 const registerSchema = z
   .object({
+    firstName: z.string().min(1, 'First name is required'),
+    lastName: z.string().min(1, 'Last name is required'),
     email: z.string().email('Please enter a valid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z
@@ -45,7 +46,6 @@ const registerSchema = z
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function Register() {
-  const { signUp } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,6 +53,8 @@ export default function Register() {
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
+      firstName: '',
+      lastName: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -64,21 +66,42 @@ export default function Register() {
     setError(null);
 
     try {
-      const result = await signUp(data.email, data.password);
+      console.log('Starting registration with:', data.email);
 
-      if (result?.error) {
-        const errorMessage =
-          result.error.message || 'Registration failed. Please try again.';
-        setError(errorMessage);
+      // Using our server API endpoint to register with auto-confirmation
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Registration API error:', result);
+        setError(`Registration failed: ${result.error}`);
         toast.error('Registration failed');
+        return;
+      }
+
+      if (result.warning) {
+        console.warn('Registration warning:', result.warning);
+        toast.warning('Registration partially completed');
       } else {
-        toast.success(
-          'Registration successful. Please check your email to verify your account.'
-        );
+        console.log('User registered successfully:', result.user);
+        toast.success('Registration successful! You can now log in.');
         router.push('/auth/login');
       }
     } catch (error) {
-      setError('An unexpected error occurred. Please try again.');
+      console.error('Registration error details:', error);
+      setError(`Unexpected error: ${String(error)}`);
       toast.error('Registration failed');
     } finally {
       setIsLoading(false);
@@ -112,6 +135,44 @@ export default function Register() {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-4"
               >
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="John"
+                          type="text"
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Doe"
+                          type="text"
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="email"

@@ -6,7 +6,6 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
@@ -29,6 +28,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { createClient } from '@/lib/supabase/client';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -42,6 +42,7 @@ export default function Login() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showResendVerification, setShowResendVerification] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -54,20 +55,70 @@ export default function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     setError(null);
+    console.log('Login attempt with email:', data.email);
 
     try {
       const result = await signIn(data.email, data.password);
+      console.log('Sign-in result:', result);
 
       if (result?.error) {
-        setError('Invalid email or password. Please try again.');
+        console.error('Login error:', result.error);
+
+        const errorMsg = result.error.message || '';
+
+        // Handle specific error messages
+        if (errorMsg.includes('Email not confirmed')) {
+          setError(
+            'Please check your email and confirm your account before logging in.'
+          );
+          setShowResendVerification(true);
+        } else if (errorMsg.includes('Invalid login credentials')) {
+          setError(
+            'Invalid email or password. Please check your credentials and try again.'
+          );
+        } else {
+          setError(`Login failed: ${errorMsg}`);
+        }
+
         toast.error('Login failed');
       } else {
+        console.log('Login successful, redirecting...');
         toast.success('Logged in successfully');
         router.push('/');
       }
     } catch (err) {
+      console.error('Unexpected login error:', err);
       setError('An unexpected error occurred. Please try again.');
       toast.error('Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    try {
+      setIsLoading(true);
+      const email = form.getValues('email');
+      if (!email) {
+        toast.error('Please enter your email address');
+        return;
+      }
+
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
+
+      if (error) {
+        toast.error(`Failed to resend: ${error.message}`);
+      } else {
+        toast.success('Verification email resent. Please check your inbox');
+        setShowResendVerification(false);
+      }
+    } catch (err) {
+      console.error('Error resending verification:', err);
+      toast.error('Failed to resend verification email');
     } finally {
       setIsLoading(false);
     }
@@ -90,6 +141,17 @@ export default function Login() {
             {error && (
               <Alert variant="destructive" className="mb-4">
                 <AlertDescription>{error}</AlertDescription>
+                {showResendVerification && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={resendVerificationEmail}
+                    disabled={isLoading}
+                  >
+                    Resend verification email
+                  </Button>
+                )}
               </Alert>
             )}
 
