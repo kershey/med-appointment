@@ -17,14 +17,18 @@ export function createClient() {
           try {
             cookieStore.set({ name, value, ...options });
           } catch (error) {
-            // Handle error silently
+            // Log the error instead of silently ignoring it
+            console.error('Error setting cookie in Supabase client:', error);
+            // In production, you might want to use a proper logging service
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options });
           } catch (error) {
-            // Handle error silently
+            // Log the error instead of silently ignoring it
+            console.error('Error removing cookie in Supabase client:', error);
+            // In production, you might want to use a proper logging service
           }
         },
       },
