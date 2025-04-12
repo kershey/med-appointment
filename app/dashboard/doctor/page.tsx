@@ -23,8 +23,10 @@ import {
   BadgeDollarSign,
   ArrowRight,
   Clock,
+  Stethoscope,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 
 interface Patient {
   id: string;
@@ -47,7 +49,7 @@ interface AppointmentsByDate {
   [date: string]: Appointment[];
 }
 
-export default function DashboardPage() {
+export default function DoctorDashboard() {
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
@@ -62,25 +64,23 @@ export default function DashboardPage() {
   });
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointments, setAppointments] = useState<AppointmentsByDate>({});
-  const [isDoctor, setIsDoctor] = useState(false);
+  const supabase = createClient();
 
   useEffect(() => {
-    // If auth is still loading, wait
-    if (authLoading) return;
+    // Check if user is authenticated and is a doctor
+    if (!authLoading) {
+      if (!user) {
+        router.push('/auth/doctor/login');
+        return;
+      }
 
-    // If no user is logged in, redirect to login
-    if (!user) {
-      router.push('/auth/login');
-      return;
-    }
+      if (profile?.role !== 'doctor') {
+        router.push('/access-denied');
+        return;
+      }
 
-    // Check if the user is a doctor
-    if (profile?.role === 'doctor') {
-      setIsDoctor(true);
+      // User is a doctor, load their data
       fetchDoctorData();
-    } else {
-      setIsDoctor(false);
-      fetchPatientData();
     }
   }, [user, profile, authLoading, router]);
 
@@ -188,17 +188,14 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchPatientData = async () => {
-    // Implement this if you need to display a patient dashboard
-    setIsLoading(false);
-  };
-
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading dashboard...</p>
+          <p className="mt-4 text-muted-foreground">
+            Loading doctor dashboard...
+          </p>
         </div>
       </div>
     );
@@ -207,13 +204,18 @@ export default function DashboardPage() {
   return (
     <div className="flex-1 space-y-6 p-6 md:p-8">
       <div className="flex flex-col space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div className="flex items-center">
+          <Stethoscope className="h-8 w-8 text-primary mr-2" />
+          <h1 className="text-3xl font-bold tracking-tight">
+            Doctor Dashboard
+          </h1>
+        </div>
         <p className="text-muted-foreground">
-          Welcome back, {profile?.first_name} {profile?.last_name}
+          Welcome, Dr. {profile?.first_name} {profile?.last_name}
         </p>
       </div>
 
-      <DashboardStats stats={stats} isDoctor={isDoctor} />
+      <DashboardStats stats={stats} isDoctor={true} />
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList className="grid grid-cols-4 md:w-[600px]">
@@ -237,7 +239,7 @@ export default function DashboardPage() {
                     variant="outline"
                     className="h-auto py-4 justify-start"
                   >
-                    <Link href="/dashboard/appointments/create">
+                    <Link href="/dashboard/doctor/appointments/create">
                       <CalendarClock className="h-5 w-5 mr-2" />
                       <div className="text-left">
                         <div className="font-medium">New Appointment</div>
@@ -252,7 +254,7 @@ export default function DashboardPage() {
                     variant="outline"
                     className="h-auto py-4 justify-start"
                   >
-                    <Link href="/dashboard/patients/add">
+                    <Link href="/dashboard/doctor/patients/add">
                       <Users className="h-5 w-5 mr-2" />
                       <div className="text-left">
                         <div className="font-medium">Add Patient</div>
@@ -267,7 +269,7 @@ export default function DashboardPage() {
                     variant="outline"
                     className="h-auto py-4 justify-start"
                   >
-                    <Link href="/dashboard/medical-records/create">
+                    <Link href="/dashboard/doctor/medical-records/create">
                       <ClipboardList className="h-5 w-5 mr-2" />
                       <div className="text-left">
                         <div className="font-medium">Medical Record</div>
@@ -282,7 +284,7 @@ export default function DashboardPage() {
                     variant="outline"
                     className="h-auto py-4 justify-start"
                   >
-                    <Link href="/dashboard/payments">
+                    <Link href="/dashboard/doctor/payments">
                       <BadgeDollarSign className="h-5 w-5 mr-2" />
                       <div className="text-left">
                         <div className="font-medium">Manage Payments</div>
@@ -308,7 +310,7 @@ export default function DashboardPage() {
                     </CardDescription>
                   </div>
                   <Button asChild variant="ghost" size="sm" className="gap-1">
-                    <Link href="/dashboard/appointments">
+                    <Link href="/dashboard/doctor/appointments">
                       View all <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -368,17 +370,11 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          <AppointmentCalendar
-            appointments={appointments}
-            isDoctor={isDoctor}
-          />
+          <AppointmentCalendar appointments={appointments} isDoctor={true} />
         </TabsContent>
 
         <TabsContent value="appointments" className="space-y-6">
-          <AppointmentCalendar
-            appointments={appointments}
-            isDoctor={isDoctor}
-          />
+          <AppointmentCalendar appointments={appointments} isDoctor={true} />
         </TabsContent>
 
         <TabsContent value="patients" className="space-y-6">
@@ -520,7 +516,7 @@ export default function DashboardPage() {
 
                 <div className="flex justify-center mt-4">
                   <Button asChild variant="outline">
-                    <Link href="/dashboard/finances">
+                    <Link href="/dashboard/doctor/finances">
                       View Financial Reports
                     </Link>
                   </Button>

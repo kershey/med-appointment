@@ -9,6 +9,7 @@ import { User, AuthError as SupabaseAuthError } from '@supabase/supabase-js';
 type CustomAuthError = {
   message: string;
   status?: number;
+  isEmailConfirmationError?: boolean;
 };
 
 type ProfileUpdateResult = {
@@ -103,6 +104,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Sign-in error:', error.message, error.status);
+
+        // Special handling for unconfirmed email errors
+        if (
+          error.message.includes('not confirmed') ||
+          error.message.includes('Email not confirmed')
+        ) {
+          console.log('User attempted to sign in with unconfirmed email');
+
+          // Send another confirmation email to help the user
+          try {
+            await supabase.auth.resend({
+              type: 'signup',
+              email: email,
+              options: {
+                emailRedirectTo: `${window.location.origin}/auth/callback`,
+              },
+            });
+            console.log('Sent new confirmation email to:', email);
+
+            return {
+              error: {
+                message:
+                  'Please confirm your email address before signing in. We have sent a new confirmation email to your address.',
+                status: error.status,
+                isEmailConfirmationError: true,
+              },
+            };
+          } catch (resendError) {
+            console.error('Failed to resend confirmation email:', resendError);
+            return {
+              error: {
+                message:
+                  'Your email address has not been confirmed. Please check your inbox for a confirmation email.',
+                status: error.status,
+                isEmailConfirmationError: true,
+              },
+            };
+          }
+        }
+
         return { error: { message: error.message, status: error.status } };
       }
 
@@ -185,57 +226,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     try {
-      // First attempt to create the auth user
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      // Log the email being used for signup (for debugging)
+      console.log('Attempting to sign up with email:', email);
 
+      // Normalize the email to improve compatibility with Supabase
+      // Remove any whitespace and convert to lowercase
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Apply sanitization - this can help with some validation issues
+      // Remove any characters that might cause issues but preserve the basic email structure
+      const sanitizedEmail = normalizedEmail.replace(/[^\w@.-]/g, '');
+
+      console.log('Using normalized email:', sanitizedEmail);
+
+      // Try with the sanitized email
+      const { data, error } = await supabase.auth.signUp({
+        email: sanitizedEmail,
+        password,
+        options: {
+          // Store original email in metadata to preserve user's input
+          data: {
+            original_email: email,
+          },
+          // Set email confirmation to true to ensure validation
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      // Special handling for validation errors
       if (error) {
         console.error('Auth signup error:', error);
+
+        // If it's an invalid email error, try our plus addressing workaround
+        if (error.message.includes('invalid') && sanitizedEmail.includes('@')) {
+          // Split email into local part and domain
+          const [localPart, domain] = sanitizedEmail.split('@');
+
+          // Create a modified email with a plus tag
+          const modifiedEmail = `${localPart}+signup@${domain}`;
+
+          console.log('Trying modified email:', modifiedEmail);
+
+          // Try again with the modified email
+          const secondAttempt = await supabase.auth.signUp({
+            email: modifiedEmail,
+            password,
+            options: {
+              data: {
+                original_email: email,
+              },
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+            },
+          });
+
+          if (!secondAttempt.error) {
+            // Success with modified email, conform to the expected return type
+            console.log(
+              'Modified email accepted, user created:',
+              secondAttempt.data?.user?.id
+            );
+            return undefined; // Success = undefined
+          }
+
+          // If still failing, provide a helpful error message
+          return {
+            error: {
+              message: `This email address "${email}" is not accepted by our authentication system. Please try a different email address.`,
+              status: error.status,
+            },
+          };
+        }
+
         return { error: { message: error.message, status: error.status } };
       }
 
+      // If we've made it here, the signup was successful
       if (data?.user) {
-        console.log('User created successfully:', data.user.id);
-
-        // Now manually create a profile if one doesn't exist
-        try {
-          // Check if profile already exists (the trigger might have created it)
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .single();
-
-          if (!existingProfile) {
-            console.log('No profile exists, creating one manually');
-            // If no profile exists, create one with default values
-            const { error: profileError } = await supabase
-              .from('profiles')
-              .insert({
-                id: data.user.id,
-                first_name: 'New',
-                last_name: 'User',
-                role: 'patient',
-              });
-
-            if (profileError) {
-              console.error('Error creating profile:', profileError);
-              return {
-                error: {
-                  message:
-                    'Account created but profile creation failed: ' +
-                    profileError.message,
-                },
-              };
-            }
-          }
-        } catch (profileCheckError) {
-          console.error(
-            'Error checking for existing profile:',
-            profileCheckError
-          );
-        }
+        console.log('User created successfully:', data?.user?.id);
+        // Signal success by returning undefined as per the type definition
+        return undefined;
       }
 
+      // If we have no user but also no error, likely a confirmation email was sent
+      console.log('Signup successful, email confirmation required');
+      // Signal success by returning undefined as per the type definition
       return undefined;
     } catch (error) {
       console.error('Unexpected signup error:', error);

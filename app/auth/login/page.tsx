@@ -55,6 +55,7 @@ export default function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     setError(null);
+    setShowResendVerification(false);
     console.log('Login attempt with email:', data.email);
 
     try {
@@ -64,20 +65,29 @@ export default function Login() {
       if (result?.error) {
         console.error('Login error:', result.error);
 
-        const errorMsg = result.error.message || '';
-
-        // Handle specific error messages
-        if (errorMsg.includes('Email not confirmed')) {
+        // Check for email confirmation error
+        if (result.error.isEmailConfirmationError) {
           setError(
-            'Please check your email and confirm your account before logging in.'
+            result.error.message ||
+              'Please confirm your email address before signing in.'
           );
           setShowResendVerification(true);
-        } else if (errorMsg.includes('Invalid login credentials')) {
+        }
+        // Check for empty error object
+        else if (
+          Object.keys(result.error).length === 0 ||
+          !result.error.message
+        ) {
+          console.error('Empty login error object received');
+          setError(
+            'Authentication failed. Please try again or contact support if the problem persists.'
+          );
+        } else if (result.error.message.includes('Invalid login credentials')) {
           setError(
             'Invalid email or password. Please check your credentials and try again.'
           );
         } else {
-          setError(`Login failed: ${errorMsg}`);
+          setError(`Login failed: ${result.error.message}`);
         }
 
         toast.error('Login failed');
