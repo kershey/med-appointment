@@ -128,6 +128,13 @@ export default function DashboardLayout({
               {isAdmin && (
                 <>
                   <Link
+                    href="/admin/doctor-approval"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-900 transition-all hover:bg-slate-100"
+                  >
+                    <Users className="h-4 w-4" />
+                    Doctor Approval
+                  </Link>
+                  <Link
                     href="/admin/users"
                     className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-900 transition-all hover:bg-slate-100"
                   >

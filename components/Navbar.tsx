@@ -32,33 +32,232 @@ export function Navbar() {
     return user?.email?.substring(0, 2).toUpperCase() || 'U';
   };
 
-  const navLinks = [
+  // Define navigation links for each role
+  const commonLinks = [
     { href: '/', label: 'Home', public: true },
     { href: '/doctors', label: 'Our Doctors', public: true },
     { href: '/services', label: 'Services', public: true },
+  ];
+
+  const patientLinks = [
     { href: '/appointments', label: 'Book Appointment', public: false },
+    { href: '/patient/dashboard', label: 'My Health', public: false },
+  ];
+
+  const doctorLinks = [
+    { href: '/dashboard', label: 'Dashboard', public: false },
+    { href: '/appointments/manage', label: 'My Schedule', public: false },
+  ];
+
+  const adminLinks = [
+    { href: '/admin', label: 'Admin Dashboard', public: false },
     {
-      href: '/patient/dashboard',
-      label: 'My Health',
+      href: '/admin/doctor-approval',
+      label: 'Doctor Approvals',
       public: false,
-      roles: ['patient'],
-    },
-    {
-      href: '/dashboard',
-      label: 'Dashboard',
-      public: false,
-      roles: ['doctor', 'staff', 'admin'],
     },
   ];
+
+  // Combine links based on user role
+  let navLinks = [...commonLinks];
+
+  if (user && profile) {
+    if (isRole('patient')) {
+      navLinks = [...navLinks, ...patientLinks];
+    } else if (isRole('doctor')) {
+      navLinks = [...navLinks, ...doctorLinks];
+    } else if (isRole('admin')) {
+      navLinks = [...navLinks, ...adminLinks];
+    }
+  }
 
   const filteredLinks = navLinks.filter((link) => {
     if (link.public) return true;
     if (!user) return false;
-    if (link.roles) {
-      return link.roles.some((role) => isRole(role as any));
-    }
     return true;
   });
+
+  // Get dropdown menu items based on role
+  const getDropdownMenuItems = () => {
+    const commonItems = (
+      <>
+        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/profile">Profile</Link>
+        </DropdownMenuItem>
+      </>
+    );
+
+    if (isRole('patient')) {
+      return (
+        <>
+          {commonItems}
+          <DropdownMenuItem asChild>
+            <Link href="/patient/dashboard">Dashboard</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/patient/appointments">My Appointments</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/patient/medical-records">Medical Records</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+        </>
+      );
+    } else if (isRole('doctor')) {
+      return (
+        <>
+          {commonItems}
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard">Dashboard</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/appointments/manage">My Schedule</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/patients">My Patients</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+        </>
+      );
+    } else if (isRole('admin')) {
+      return (
+        <>
+          {commonItems}
+          <DropdownMenuItem asChild>
+            <Link href="/admin">Dashboard</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/admin/doctor-approval">Doctor Approvals</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/admin/users">User Management</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/admin/settings">System Settings</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+        </>
+      );
+    } else {
+      // Default items for staff or unknown roles
+      return (
+        <>
+          {commonItems}
+          <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+        </>
+      );
+    }
+  };
+
+  // Get mobile menu items based on role
+  const getMobileMenuItems = () => {
+    const commonItems = (
+      <Link
+        href="/profile"
+        className="text-gray-600 hover:text-primary transition-colors"
+        onClick={toggleMobileMenu}
+      >
+        Profile
+      </Link>
+    );
+
+    if (isRole('patient')) {
+      return (
+        <>
+          {commonItems}
+          <Link
+            href="/patient/dashboard"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/patient/appointments"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            My Appointments
+          </Link>
+          <Link
+            href="/patient/medical-records"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            Medical Records
+          </Link>
+        </>
+      );
+    } else if (isRole('doctor')) {
+      return (
+        <>
+          {commonItems}
+          <Link
+            href="/dashboard"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/appointments/manage"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            My Schedule
+          </Link>
+          <Link
+            href="/patients"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            My Patients
+          </Link>
+        </>
+      );
+    } else if (isRole('admin')) {
+      return (
+        <>
+          {commonItems}
+          <Link
+            href="/admin"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/admin/doctor-approval"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            Doctor Approvals
+          </Link>
+          <Link
+            href="/admin/users"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            User Management
+          </Link>
+          <Link
+            href="/admin/settings"
+            className="text-gray-600 hover:text-primary transition-colors"
+            onClick={toggleMobileMenu}
+          >
+            System Settings
+          </Link>
+        </>
+      );
+    } else {
+      return commonItems;
+    }
+  };
 
   return (
     <nav className="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-50">
@@ -102,31 +301,8 @@ export function Navbar() {
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/profile">Profile</Link>
-                </DropdownMenuItem>
-                {isRole('patient') && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/patient/appointments">My Appointments</Link>
-                  </DropdownMenuItem>
-                )}
-                {isRole('patient') && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/patient/medical-records">Medical Records</Link>
-                  </DropdownMenuItem>
-                )}
-                {(isRole('doctor') || isRole('staff') || isRole('admin')) && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/dashboard">Dashboard</Link>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()}>
-                  Log out
-                </DropdownMenuItem>
+              <DropdownMenuContent align="end" className="w-56">
+                {getDropdownMenuItems()}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -137,6 +313,12 @@ export function Navbar() {
               <Button asChild>
                 <Link href="/auth/register">Sign up</Link>
               </Button>
+              <Link
+                href="/auth/admin/login"
+                className="text-xs text-muted-foreground hover:text-primary ml-2"
+              >
+                Admin
+              </Link>
             </>
           )}
         </div>
@@ -182,34 +364,17 @@ export function Navbar() {
                     Sign up
                   </Link>
                 </Button>
+                <Link
+                  href="/auth/admin/login"
+                  className="text-xs text-center text-muted-foreground hover:text-primary pt-2"
+                  onClick={toggleMobileMenu}
+                >
+                  Admin Login
+                </Link>
               </div>
             ) : (
               <div className="pt-4 flex flex-col space-y-3">
-                <Link
-                  href="/profile"
-                  className="text-gray-600 hover:text-primary transition-colors"
-                  onClick={toggleMobileMenu}
-                >
-                  Profile
-                </Link>
-                {isRole('patient') && (
-                  <>
-                    <Link
-                      href="/patient/appointments"
-                      className="text-gray-600 hover:text-primary transition-colors"
-                      onClick={toggleMobileMenu}
-                    >
-                      My Appointments
-                    </Link>
-                    <Link
-                      href="/patient/medical-records"
-                      className="text-gray-600 hover:text-primary transition-colors"
-                      onClick={toggleMobileMenu}
-                    >
-                      Medical Records
-                    </Link>
-                  </>
-                )}
+                {getMobileMenuItems()}
                 <Button
                   variant="destructive"
                   onClick={() => {

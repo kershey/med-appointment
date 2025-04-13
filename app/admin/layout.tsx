@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/context/AuthContext';
+import { Navbar } from '@/components/Navbar';
 
 export default function AdminLayout({
   children,
@@ -30,5 +31,10 @@ export default function AdminLayout({
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</div>
+    </>
+  );
 }

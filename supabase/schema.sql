@@ -12,7 +12,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create profiles table
 CREATE TABLE profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY,
+  user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   phone TEXT,
@@ -137,25 +138,32 @@ CREATE TABLE payments (
 -- Profiles table policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- Allow the trigger to insert profiles (using service_role internally)
-CREATE POLICY "Database trigger can insert profiles" 
+-- Allow the postgres and service_role to insert profiles (for triggers and admin operations)
+CREATE POLICY "Trigger can insert profiles" 
   ON profiles FOR INSERT 
+  TO postgres, service_role
   WITH CHECK (true);
+
+-- Also allow inserts from authenticated clients (for fallback client-side profile creation)
+CREATE POLICY "Authenticated users can insert profiles matching their ID" 
+  ON profiles FOR INSERT 
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id AND auth.uid() = id);
 
 CREATE POLICY "Users can view their own profile"
   ON profiles FOR SELECT
-  USING (auth.uid() = id);
+  USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can update their own profile"
   ON profiles FOR UPDATE
-  USING (auth.uid() = id);
+  USING (auth.uid() = user_id);
 
 CREATE POLICY "Staff and Admin can view all profiles"
   ON profiles FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND (role = 'staff' OR role = 'admin')
+      WHERE user_id = auth.uid() AND (role = 'staff' OR role = 'admin')
     )
   );
 
@@ -164,7 +172,7 @@ CREATE POLICY "Staff and Admin can update all profiles"
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND (role = 'staff' OR role = 'admin')
+      WHERE user_id = auth.uid() AND (role = 'staff' OR role = 'admin')
     )
   );
 
@@ -181,7 +189,7 @@ CREATE POLICY "Admin can manage doctors"
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND role = 'admin'
+      WHERE user_id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -190,26 +198,39 @@ ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Patients can view their own appointments"
   ON appointments FOR SELECT
-  USING (auth.uid() = patient_id);
+  USING (EXISTS (
+    SELECT 1 FROM profiles
+    WHERE profiles.id = appointments.patient_id AND profiles.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Patients can insert their own appointments"
   ON appointments FOR INSERT
-  WITH CHECK (auth.uid() = patient_id);
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM profiles
+    WHERE profiles.id = patient_id AND profiles.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Patients can update their own appointments"
   ON appointments FOR UPDATE
-  USING (auth.uid() = patient_id AND status = 'scheduled');
+  USING (EXISTS (
+    SELECT 1 FROM profiles
+    WHERE profiles.id = appointments.patient_id AND profiles.user_id = auth.uid()
+  ) AND status = 'scheduled');
 
 CREATE POLICY "Doctors can view their own appointments"
   ON appointments FOR SELECT
-  USING (auth.uid() = doctor_id);
+  USING (EXISTS (
+    SELECT 1 FROM profiles p
+    JOIN doctors d ON p.id = d.id
+    WHERE d.id = appointments.doctor_id AND p.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Staff and Admin can manage all appointments"
   ON appointments FOR ALL
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND (role = 'staff' OR role = 'admin')
+      WHERE user_id = auth.uid() AND (role = 'staff' OR role = 'admin')
     )
   );
 
@@ -218,26 +239,41 @@ ALTER TABLE medical_records ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Patients can view their own medical records"
   ON medical_records FOR SELECT
-  USING (auth.uid() = patient_id);
+  USING (EXISTS (
+    SELECT 1 FROM profiles
+    WHERE profiles.id = medical_records.patient_id AND profiles.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Doctors can view and update records for their patients"
   ON medical_records FOR SELECT
-  USING (auth.uid() = doctor_id);
+  USING (EXISTS (
+    SELECT 1 FROM profiles p
+    JOIN doctors d ON p.id = d.id
+    WHERE d.id = medical_records.doctor_id AND p.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Doctors can insert records for their patients"
   ON medical_records FOR INSERT
-  WITH CHECK (auth.uid() = doctor_id);
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM profiles p
+    JOIN doctors d ON p.id = d.id
+    WHERE d.id = medical_records.doctor_id AND p.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Doctors can update their own records"
   ON medical_records FOR UPDATE
-  USING (auth.uid() = doctor_id);
+  USING (EXISTS (
+    SELECT 1 FROM profiles p
+    JOIN doctors d ON p.id = d.id
+    WHERE d.id = medical_records.doctor_id AND p.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Staff and Admin can manage all medical records"
   ON medical_records FOR ALL
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND (role = 'staff' OR role = 'admin')
+      WHERE user_id = auth.uid() AND (role = 'staff' OR role = 'admin')
     )
   );
 
@@ -248,8 +284,9 @@ CREATE POLICY "Patients can view their own payments"
   ON payments FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM appointments
-      WHERE appointments.id = payments.appointment_id AND appointments.patient_id = auth.uid()
+      SELECT 1 FROM appointments a
+      JOIN profiles p ON p.id = a.patient_id
+      WHERE a.id = payments.appointment_id AND p.user_id = auth.uid()
     )
   );
 
@@ -258,43 +295,116 @@ CREATE POLICY "Staff and Admin can manage all payments"
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND (role = 'staff' OR role = 'admin')
+      WHERE user_id = auth.uid() AND (role = 'staff' OR role = 'admin')
     )
   );
 
--- Create function to handle profile creation on signup
+-- Drop any existing triggers and functions to ensure clean recreation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS handle_new_user();
+DROP FUNCTION IF EXISTS sync_missing_profiles();
+
+-- Create function to handle profile creation on signup with enhanced error handling
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   first_name_val TEXT;
   last_name_val TEXT;
+  insert_error TEXT;
 BEGIN
-  -- Get first_name and last_name from user metadata if available
-  first_name_val := COALESCE(
-    (NEW.raw_user_meta_data->>'first_name')::TEXT,
-    ''
-  );
+  BEGIN
+    -- Get first_name and last_name from user metadata if available
+    first_name_val := COALESCE(
+      (NEW.raw_user_meta_data->>'first_name')::TEXT,
+      'New'
+    );
+    
+    last_name_val := COALESCE(
+      (NEW.raw_user_meta_data->>'last_name')::TEXT,
+      'User'
+    );
+    
+    -- Validate input data
+    IF length(first_name_val) < 1 THEN
+      first_name_val := 'New';
+    END IF;
+    
+    IF length(last_name_val) < 1 THEN
+      last_name_val := 'User';
+    END IF;
+    
+    -- Use the auth user id for both id and user_id to ensure consistency
+    INSERT INTO public.profiles (id, user_id, first_name, last_name, role)
+    VALUES (NEW.id, NEW.id, first_name_val, last_name_val, 'patient')
+    ON CONFLICT (id) DO NOTHING;
+    
+    RAISE LOG 'Successfully created profile for user: %', NEW.id;
+  EXCEPTION
+    WHEN unique_violation THEN
+      -- If we have a unique violation, the profile likely already exists
+      RAISE LOG 'Profile already exists for user: %, skipping creation', NEW.id;
+    WHEN insufficient_privilege THEN
+      -- If we have permission issues
+      RAISE LOG 'Permission denied creating profile for user: %, check RLS policies', NEW.id;
+      -- Try to get more detailed information about the error
+      GET STACKED DIAGNOSTICS insert_error = PG_EXCEPTION_DETAIL;
+      RAISE LOG 'Error detail: %', insert_error;
+    WHEN others THEN
+      -- For any other error
+      RAISE LOG 'Error in handle_new_user function for user %: %', NEW.id, SQLERRM;
+      -- Try to get more detailed information about the error
+      GET STACKED DIAGNOSTICS insert_error = PG_EXCEPTION_DETAIL;
+      RAISE LOG 'Error detail: %', insert_error;
+  END;
   
-  last_name_val := COALESCE(
-    (NEW.raw_user_meta_data->>'last_name')::TEXT,
-    ''
-  );
-  
-  INSERT INTO profiles (id, first_name, last_name, role)
-  VALUES (NEW.id, first_name_val, last_name_val, 'patient');
-  
+  -- Always return NEW even if there was an error
+  -- This ensures the auth user is still created
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create trigger for new user signup
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
+-- Create helper function to manually fill in missing profiles
+CREATE OR REPLACE FUNCTION sync_missing_profiles()
+RETURNS INTEGER AS $$
+DECLARE
+  inserted_count INTEGER := 0;
+  missing_users RECORD;
+BEGIN
+  FOR missing_users IN (
+    SELECT u.id, 
+          COALESCE((u.raw_user_meta_data->>'first_name')::TEXT, 'New') AS first_name,
+          COALESCE((u.raw_user_meta_data->>'last_name')::TEXT, 'User') AS last_name
+    FROM auth.users u
+    LEFT JOIN public.profiles p ON u.id = p.id
+    WHERE p.id IS NULL
+  ) LOOP
+    BEGIN
+      INSERT INTO public.profiles (id, user_id, first_name, last_name, role)
+      VALUES (missing_users.id, missing_users.id, missing_users.first_name, missing_users.last_name, 'patient')
+      ON CONFLICT DO NOTHING;
+      
+      inserted_count := inserted_count + 1;
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE LOG 'Error syncing profile for user %: %', missing_users.id, SQLERRM;
+    END;
+  END LOOP;
+  
+  RETURN inserted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- Add indexes for performance
-CREATE INDEX idx_appointments_patient_id ON appointments(patient_id);
-CREATE INDEX idx_appointments_doctor_id ON appointments(doctor_id);
-CREATE INDEX idx_appointments_date ON appointments(appointment_date);
-CREATE INDEX idx_medical_records_patient_id ON medical_records(patient_id);
-CREATE INDEX idx_payments_appointment_id ON payments(appointment_id); 
+CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_doctor_id ON appointments(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
+CREATE INDEX IF NOT EXISTS idx_medical_records_patient_id ON medical_records(patient_id);
+CREATE INDEX IF NOT EXISTS idx_payments_appointment_id ON payments(appointment_id);
+
+-- Run a one-time sync to ensure all existing users have profiles
+SELECT sync_missing_profiles(); 

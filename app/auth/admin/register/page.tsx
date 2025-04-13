@@ -27,10 +27,9 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { createClient } from '@/lib/supabase/client';
-import { Stethoscope } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
-// Simplified validation schema
+// Admin registration schema
 const registerSchema = z
   .object({
     firstName: z
@@ -43,17 +42,11 @@ const registerSchema = z
       .min(2, 'Last name must be at least 2 characters')
       .max(50, 'Last name cannot exceed 50 characters'),
 
-    email: z.string(),
+    email: z.string().email('Please enter a valid email address'),
 
     password: z.string().min(8, 'Password must be at least 8 characters'),
 
     confirmPassword: z.string(),
-
-    phone: z.string().min(10, 'Please enter a valid phone number'),
-
-    specialization: z.string().min(2, 'Please enter your specialization'),
-
-    licenseNumber: z.string().min(2, 'Please enter your license number'),
 
     agreeToTerms: z.boolean().refine((val) => val === true, {
       message: 'You must agree to the terms and conditions',
@@ -66,7 +59,7 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
-export default function DoctorRegister() {
+export default function AdminRegister() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,35 +72,23 @@ export default function DoctorRegister() {
       email: '',
       password: '',
       confirmPassword: '',
-      phone: '',
-      specialization: '',
-      licenseNumber: '',
       agreeToTerms: false,
     },
   });
 
   const onSubmit = async (values: RegisterFormValues) => {
     setIsLoading(true);
+    setError(null);
+
     try {
-      const {
-        firstName,
-        lastName,
-        email,
-        password,
-        phone,
-        specialization,
-        licenseNumber,
-      } = values;
+      const { firstName, lastName, email, password } = values;
 
-      // Use the email as provided by the user
-      console.log('Submitting registration with email:', email);
+      console.log(
+        'Starting admin account creation process using server API...'
+      );
 
-      // Create Supabase client only for post-registration session checks
-      const supabase = createClient();
-
-      // Instead of using the signUp function directly, use our server API route
-      // that uses the admin API with email_confirm=true
-      const response = await fetch('/api/auth/doctor-register', {
+      // Instead of directly using Supabase client, call our server-side API
+      const response = await fetch('/api/auth/admin-register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,63 +98,33 @@ export default function DoctorRegister() {
           lastName,
           email,
           password,
-          phone,
-          specialization,
-          licenseNumber,
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        let errorMessage =
-          result.error || 'Failed to register. Please try again.';
-
-        // Provide more user-friendly error messages for common errors
-        if (errorMessage.includes('duplicate key value')) {
-          if (errorMessage.includes('doctors_pkey')) {
-            errorMessage =
-              'A doctor account with this information already exists. Please try signing in instead.';
-          } else if (errorMessage.includes('license_number')) {
-            errorMessage =
-              'A doctor with this license number is already registered. Please use a different license number or contact support.';
-          } else {
-            errorMessage =
-              'This account already exists. Please try signing in or use a different email.';
-          }
-        }
-
-        setError(errorMessage);
-        console.error('Registration error details:', result.error);
+        console.error('Admin registration error:', result.error);
+        setError(result.error || 'Failed to register. Please try again.');
         toast.error('Registration failed');
         setIsLoading(false);
         return;
       }
 
-      console.log('Doctor registration successful:', result);
+      // Registration successful
+      console.log(
+        'Admin account created successfully without email confirmation'
+      );
+      toast.success('Admin account created successfully!');
 
-      // Try to sign in with the newly created credentials
-      // This works because we set email_confirm=true on the server
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Redirect to login page with success message
+      toast.info('You can now log in with your admin credentials');
 
-      if (signInError) {
-        console.error('Sign-in after registration failed:', signInError);
-        // Even if sign-in fails, the registration succeeded, so show success
-        toast.success(
-          'Registration successful! Please sign in with your new account.'
-        );
-        router.push('/auth/doctor/registration-success');
-        setIsLoading(false);
-        return;
-      }
-
-      // We've successfully signed in
-      toast.success('Registration successful! Your account is ready to use.');
-      router.push('/auth/doctor/registration-success');
+      setTimeout(() => {
+        router.push('/auth/admin/login');
+      }, 2000);
     } catch (err) {
+      console.error('Unexpected error during registration:', err);
       setError(
         `Registration failed: ${
           err instanceof Error ? err.message : 'Unknown error'
@@ -186,25 +137,22 @@ export default function DoctorRegister() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-[#DDF2FD] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white">
       <Navbar />
 
       <div className="flex-1 flex items-center justify-center px-4 py-10">
-        <Card className="w-full max-w-lg shadow-lg border border-[#9BBEC8]/40 rounded-xl">
-          <CardHeader className="text-center space-y-3 pb-4 border-b border-[#9BBEC8]/20">
+        <Card className="w-full max-w-lg shadow-lg border border-indigo-200 rounded-xl">
+          <CardHeader className="text-center space-y-3 pb-4 border-b border-indigo-200/20">
             <div className="flex justify-center mb-2">
-              <div className="w-12 h-12 rounded-full bg-[#427D9D] flex items-center justify-center">
-                <Stethoscope
-                  className="h-6 w-6 text-white"
-                  aria-hidden="true"
-                />
+              <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center">
+                <Shield className="h-6 w-6 text-white" aria-hidden="true" />
               </div>
             </div>
-            <CardTitle className="text-2xl font-bold text-[#164863]">
-              Doctor Registration
+            <CardTitle className="text-2xl font-bold text-indigo-900">
+              Admin Registration
             </CardTitle>
-            <CardDescription className="text-[#427D9D]">
-              Create your account to join our medical platform
+            <CardDescription className="text-indigo-600">
+              Create your administrator account
             </CardDescription>
           </CardHeader>
 
@@ -218,13 +166,10 @@ export default function DoctorRegister() {
               </Alert>
             )}
 
-            <Alert className="mb-6 border border-blue-200 bg-blue-50">
-              <AlertDescription className="text-blue-800">
-                We support all standard email formats. If you encounter any
-                validation issues, our system will automatically attempt to
-                adjust your email format for compatibility with our
-                authentication provider. Your original email will always be used
-                for communication.
+            <Alert className="mb-6 border border-indigo-200 bg-indigo-50">
+              <AlertDescription className="text-indigo-900">
+                Admin accounts have full control over the system. Please ensure
+                this registration is authorized by your organization.
               </AlertDescription>
             </Alert>
 
@@ -235,7 +180,7 @@ export default function DoctorRegister() {
                 noValidate
               >
                 <div>
-                  <h3 className="text-base font-semibold text-[#164863] mb-4">
+                  <h3 className="text-base font-semibold text-indigo-900 mb-4">
                     Personal Information
                   </h3>
 
@@ -286,7 +231,7 @@ export default function DoctorRegister() {
                           <FormLabel>Email</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="doctor@example.com"
+                              placeholder="admin@example.com"
                               type="email"
                               disabled={isLoading}
                               {...field}
@@ -297,75 +242,12 @@ export default function DoctorRegister() {
                         </FormItem>
                       )}
                     />
-
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="+1 (555) 123-4567"
-                              disabled={isLoading}
-                              {...field}
-                              autoComplete="tel"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-base font-semibold text-[#164863] mb-4">
-                    Professional Information
-                  </h3>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="specialization"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Specialization</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Cardiology"
-                              disabled={isLoading}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="licenseNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>License Number</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="MD123456"
-                              disabled={isLoading}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-semibold text-[#164863] mb-4">
-                    Account Security
+                  <h3 className="text-base font-semibold text-indigo-900 mb-4">
+                    Security
                   </h3>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -415,14 +297,14 @@ export default function DoctorRegister() {
                   control={form.control}
                   name="agreeToTerms"
                   render={({ field }) => (
-                    <FormItem className="flex items-start space-x-3 bg-[#DDF2FD]/30 p-4 rounded-lg border border-[#9BBEC8]/30">
+                    <FormItem className="flex items-start space-x-3 bg-indigo-50/30 p-4 rounded-lg border border-indigo-200/30">
                       <FormControl>
                         <input
                           type="checkbox"
                           checked={field.value}
                           onChange={field.onChange}
                           id="terms"
-                          className="h-4 w-4 rounded border-[#9BBEC8]"
+                          className="h-4 w-4 rounded border-indigo-200"
                         />
                       </FormControl>
                       <div>
@@ -430,7 +312,7 @@ export default function DoctorRegister() {
                           I agree to the{' '}
                           <Link
                             href="/terms"
-                            className="text-[#164863] hover:underline"
+                            className="text-indigo-700 hover:underline"
                             target="_blank"
                             rel="noopener noreferrer"
                           >
@@ -439,7 +321,7 @@ export default function DoctorRegister() {
                           and{' '}
                           <Link
                             href="/privacy"
-                            className="text-[#164863] hover:underline"
+                            className="text-indigo-700 hover:underline"
                             target="_blank"
                             rel="noopener noreferrer"
                           >
@@ -454,32 +336,31 @@ export default function DoctorRegister() {
 
                 <Button
                   type="submit"
-                  className="w-full bg-[#164863] hover:bg-[#427D9D] text-white"
+                  className="w-full bg-indigo-700 hover:bg-indigo-800 text-white"
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Creating Account...' : 'Create Account'}
+                  {isLoading ? 'Creating Account...' : 'Create Admin Account'}
                 </Button>
               </form>
             </Form>
           </CardContent>
 
-          <CardFooter className="flex flex-col space-y-3 text-sm text-center border-t border-[#9BBEC8]/30 p-6">
+          <CardFooter className="flex flex-col space-y-3 text-sm text-center border-t border-indigo-200/30 p-6">
             <div>
               Already have an account?{' '}
               <Link
-                href="/auth/doctor/login"
-                className="text-[#164863] hover:underline font-medium"
+                href="/auth/admin/login"
+                className="text-indigo-700 hover:underline font-medium"
               >
                 Sign in
               </Link>
             </div>
             <div>
-              Are you a patient?{' '}
               <Link
-                href="/auth/register"
-                className="text-[#164863] hover:underline font-medium"
+                href="/"
+                className="text-indigo-700 hover:underline font-medium"
               >
-                Patient registration
+                Back to main site
               </Link>
             </div>
           </CardFooter>

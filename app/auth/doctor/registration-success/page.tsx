@@ -114,10 +114,11 @@ export default function RegistrationSuccess() {
                     </div>
                     <div className="ml-4 pt-1">
                       <h4 className="font-medium text-[#164863]">
-                        Credentials Review
+                        Admin Approval Required
                       </h4>
                       <p className="text-sm text-[#427D9D] mt-1">
-                        Our team will review your medical credentials
+                        Our administrative team will review and approve your
+                        account
                       </p>
                     </div>
                   </div>
@@ -128,11 +129,11 @@ export default function RegistrationSuccess() {
                     </div>
                     <div className="ml-4 pt-1">
                       <h4 className="font-medium text-[#164863]">
-                        Dashboard Access
+                        Email Notification
                       </h4>
                       <p className="text-sm text-[#427D9D] mt-1">
-                        Once approved, you&apos;ll gain full access to the
-                        doctor dashboard
+                        You&apos;ll receive an email when your account has been
+                        approved
                       </p>
                     </div>
                   </div>
@@ -143,10 +144,11 @@ export default function RegistrationSuccess() {
                     </div>
                     <div className="ml-4 pt-1">
                       <h4 className="font-medium text-[#164863]">
-                        Start Using the Platform
+                        Dashboard Access
                       </h4>
                       <p className="text-sm text-[#427D9D] mt-1">
-                        Manage appointments, patient records, and more
+                        Once approved, you&apos;ll gain full access to the
+                        doctor dashboard
                       </p>
                     </div>
                   </div>

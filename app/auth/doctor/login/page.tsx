@@ -74,6 +74,14 @@ export default function DoctorLogin() {
           );
           setShowResendButton(true);
         }
+        // Check for doctor approval error (403 status code)
+        else if (
+          result.error.status === 403 &&
+          result.error.message.includes('pending approval')
+        ) {
+          setError(result.error.message);
+          toast.error('Account pending approval');
+        }
         // Check for empty error object
         else if (
           Object.keys(result.error).length === 0 ||

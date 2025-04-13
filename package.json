@@ -2,13 +2,15 @@
   "name": "med-appointment",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test:db": "node scripts/test-db-connection.js",
-    "db:check": "node scripts/test-db-connection.js"
+    "db:check": "node scripts/test-db-connection.js",
+    "fix:profiles": "node scripts/apply-fix.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
@@ -38,6 +40,7 @@
     "react-day-picker": "^8.10.1",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",
+    "resend": "^4.2.0",
     "sonner": "^2.0.1",
     "tailwind-merge": "^3.0.2",
     "tw-animate-css": "^1.2.4",
