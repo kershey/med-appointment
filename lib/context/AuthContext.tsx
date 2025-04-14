@@ -1,6 +1,12 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Profile, UserRole } from '@/types/database.types';
 import { useRouter } from 'next/navigation';
@@ -17,14 +23,17 @@ type ProfileUpdateResult = {
   error?: string | SupabaseAuthError | null;
 };
 
+type AuthResult = {
+  error?: CustomAuthError | null;
+  pendingApproval?: boolean;
+  message?: string;
+};
+
 type AuthContextType = {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (
-    email: string,
-    password: string
-  ) => Promise<{ error: CustomAuthError | null } | undefined>;
+  signIn: (email: string, password: string) => Promise<AuthResult | undefined>;
   signUp: (
     email: string,
     password: string,
@@ -47,16 +56,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const getSession = async () => {
       setLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user || null);
+      // Get authenticated user data directly
+      const { data: userData } = await supabase.auth.getUser();
 
-      if (session?.user) {
+      // Use authenticated user data from getUser()
+      setUser(userData?.user || null);
+
+      if (userData?.user) {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', session.user.id)
+          .eq('id', userData.user.id)
           .single();
         if (data && !error) {
           setProfile(data as Profile);
@@ -69,21 +79,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      // When auth state changes, explicitly fetch authenticated user data
       if (session?.user) {
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data, error }) => {
-            if (data && !error) {
-              setProfile(data as Profile);
-            }
-          });
+        const { data: userData } = await supabase.auth.getUser();
+        setUser(userData?.user || null);
+
+        // Only proceed with profile fetch if we have authenticated user
+        if (userData?.user) {
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userData.user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (data && !error) {
+                setProfile(data as Profile);
+              }
+            });
+        }
       } else {
+        setUser(null);
         setProfile(null);
       }
 
@@ -180,17 +196,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             'Doctor account not yet approved by admin:',
             profileData.id
           );
-          // Sign out the user immediately
-          await supabase.auth.signOut();
-          setUser(null);
-          setProfile(null);
 
+          // Set the profile for redirection to pending approval page
+          setProfile(profileData as Profile);
+          setUser(data.user);
+
+          // Let them stay logged in but redirect to pending approval page
           return {
-            error: {
-              message:
-                'Your doctor account is pending approval by an administrator. You will be notified once your account has been approved.',
-              status: 403,
-            },
+            pendingApproval: true,
+            message:
+              'Your doctor account is pending approval by an administrator.',
           };
         }
 
@@ -558,9 +573,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isRole = (role: UserRole) => {
-    return profile?.role === role;
-  };
+  const isRole = useCallback(
+    (role: UserRole) => {
+      if (!profile) return false;
+
+      // For doctors, also check if they're approved when verifying role
+      if (role === 'doctor') {
+        return profile.role === 'doctor' && profile.is_approved === true;
+      }
+
+      return profile.role === role;
+    },
+    [profile]
+  );
 
   return (
     <AuthContext.Provider

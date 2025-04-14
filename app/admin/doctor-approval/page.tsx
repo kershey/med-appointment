@@ -6,6 +6,7 @@ import { Profile, Doctor } from '@/types/database.types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -39,8 +40,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { z } from 'zod';
 
+// Update the type to use the standard Profile type now that is_rejected is included
 type DoctorWithProfile = Doctor & {
   profile: Profile;
 };
@@ -109,9 +112,13 @@ export default function DoctorApproval() {
 
     // Filter by tab
     if (tab === 'pending') {
-      filtered = filtered.filter((doc) => doc.profile.is_approved === false);
+      filtered = filtered.filter(
+        (doc) => !doc.profile.is_approved && !doc.profile.is_rejected
+      );
     } else if (tab === 'approved') {
       filtered = filtered.filter((doc) => doc.profile.is_approved === true);
+    } else if (tab === 'rejected') {
+      filtered = filtered.filter((doc) => doc.profile.is_rejected === true);
     }
 
     // Filter by search term
@@ -142,15 +149,28 @@ export default function DoctorApproval() {
     const supabase = createClient();
 
     try {
-      // Update the is_approved status in the profile
+      console.log(
+        `Attempting to ${approved ? 'approve' : 'reject'} doctor with ID ${doctorId}`
+      );
+
+      // Update the appropriate status fields based on approval/rejection
+      const updateData = approved
+        ? { is_approved: true, is_rejected: false }
+        : { is_approved: false, is_rejected: true };
+
+      console.log('Update data:', updateData);
+
       const { error } = await supabase
         .from('profiles')
-        .update({ is_approved: approved })
+        .update(updateData)
         .eq('id', doctorId);
 
       if (error) {
+        console.error('Supabase update error:', error);
         throw error;
       }
+
+      console.log('Profile update successful');
 
       // Show success message
       toast.success(
@@ -159,14 +179,61 @@ export default function DoctorApproval() {
           : 'Doctor account has been rejected'
       );
 
+      // Update the doctors array with the new status
+      const updatedDoctors = doctors.map((doctor) => {
+        if (doctor.profile.id === doctorId) {
+          return {
+            ...doctor,
+            profile: {
+              ...doctor.profile,
+              is_approved: updateData.is_approved,
+              is_rejected: updateData.is_rejected,
+            },
+          };
+        }
+        return doctor;
+      });
+
+      // Update both doctors arrays
+      setDoctors(updatedDoctors);
+
+      // Update selectedDoctor if it's the one being modified
+      if (selectedDoctor && selectedDoctor.profile.id === doctorId) {
+        setSelectedDoctor({
+          ...selectedDoctor,
+          profile: {
+            ...selectedDoctor.profile,
+            is_approved: updateData.is_approved,
+            is_rejected: updateData.is_rejected,
+          },
+        });
+      }
+
       // Close the dialog
       setDialogOpen(false);
 
-      // Refresh the doctor list
-      fetchDoctors();
-    } catch (error) {
+      // Set the active tab to match the new status
+      if (approved) {
+        setActiveTab('approved');
+      } else {
+        setActiveTab('rejected');
+      }
+
+      // Apply filters to update the filtered doctors list with the appropriate tab
+      applyFilters(
+        updatedDoctors,
+        searchTerm,
+        approved ? 'approved' : 'rejected'
+      );
+    } catch (error: unknown) {
       console.error('Error updating doctor approval:', error);
-      toast.error('Failed to update doctor approval status');
+      // Show more detailed error message
+      const errorMessage =
+        error instanceof Error
+          ? `Failed to update doctor status: ${error.message}`
+          : 'Failed to update doctor approval status';
+
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -231,7 +298,7 @@ export default function DoctorApproval() {
             value={activeTab}
             onValueChange={handleTabChange}
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="pending">
                 <div className="flex items-center">
                   <AlertCircle className="mr-2 h-4 w-4" />
@@ -242,6 +309,12 @@ export default function DoctorApproval() {
                 <div className="flex items-center">
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Approved
+                </div>
+              </TabsTrigger>
+              <TabsTrigger value="rejected">
+                <div className="flex items-center">
+                  <UserX className="mr-2 h-4 w-4" />
+                  Rejected
                 </div>
               </TabsTrigger>
               <TabsTrigger value="all">
@@ -265,6 +338,14 @@ export default function DoctorApproval() {
                 doctors={filteredDoctors}
                 openDoctorDetail={openDoctorDetail}
                 emptyMessage="No approved doctors"
+              />
+            </TabsContent>
+
+            <TabsContent value="rejected">
+              <DoctorTable
+                doctors={filteredDoctors}
+                openDoctorDetail={openDoctorDetail}
+                emptyMessage="No rejected doctors"
               />
             </TabsContent>
 
@@ -318,6 +399,10 @@ export default function DoctorApproval() {
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
                           Approved
                         </Badge>
+                      ) : selectedDoctor.profile.is_rejected ? (
+                        <Badge className="bg-red-100 text-red-800 hover:bg-red-200">
+                          Rejected
+                        </Badge>
                       ) : (
                         <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">
                           Pending Approval
@@ -364,7 +449,7 @@ export default function DoctorApproval() {
                 {selectedDoctor.bio && (
                   <div className="col-span-1 md:col-span-2">
                     <h3 className="text-sm font-medium text-muted-foreground">
-                      Doctor Bio
+                      Doctor&apos;s Bio
                     </h3>
                     <p className="mt-1 text-base">{selectedDoctor.bio}</p>
                   </div>
@@ -384,7 +469,33 @@ export default function DoctorApproval() {
 
                 <div className="flex-1"></div>
 
-                {!selectedDoctor.profile.is_approved ? (
+                {selectedDoctor.profile.is_approved ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="flex items-center"
+                    onClick={() =>
+                      handleApproval(selectedDoctor.profile.id, false)
+                    }
+                    disabled={loading}
+                  >
+                    <UserX className="mr-2 h-4 w-4" />
+                    Revoke Approval
+                  </Button>
+                ) : selectedDoctor.profile.is_rejected ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex items-center"
+                    onClick={() =>
+                      handleApproval(selectedDoctor.profile.id, true)
+                    }
+                    disabled={loading}
+                  >
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    Approve Doctor
+                  </Button>
+                ) : (
                   <>
                     <Button
                       variant="destructive"
@@ -393,6 +504,7 @@ export default function DoctorApproval() {
                       onClick={() =>
                         handleApproval(selectedDoctor.profile.id, false)
                       }
+                      disabled={loading}
                     >
                       <UserX className="mr-2 h-4 w-4" />
                       Reject
@@ -404,23 +516,12 @@ export default function DoctorApproval() {
                       onClick={() =>
                         handleApproval(selectedDoctor.profile.id, true)
                       }
+                      disabled={loading}
                     >
                       <UserCheck className="mr-2 h-4 w-4" />
                       Approve
                     </Button>
                   </>
-                ) : (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="flex items-center"
-                    onClick={() =>
-                      handleApproval(selectedDoctor.profile.id, false)
-                    }
-                  >
-                    <UserX className="mr-2 h-4 w-4" />
-                    Revoke Approval
-                  </Button>
                 )}
               </DialogFooter>
             </>
@@ -470,6 +571,8 @@ function DoctorTable({
                   <Badge className="bg-green-100 text-green-800">
                     Approved
                   </Badge>
+                ) : doctor.profile.is_rejected ? (
+                  <Badge className="bg-red-100 text-red-800">Rejected</Badge>
                 ) : (
                   <Badge className="bg-yellow-100 text-yellow-800">
                     Pending

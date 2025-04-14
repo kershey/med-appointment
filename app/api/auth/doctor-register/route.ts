@@ -119,7 +119,7 @@ export async function POST(request: Request) {
               specialization: specialization,
               licenseNumber: licenseNumber,
             },
-            email_confirm: true,
+            email_confirm: false, // Set to false to prevent auto login
           });
 
         if (updateUserError) {
@@ -215,7 +215,7 @@ export async function POST(request: Request) {
         }
 
         // Return success for existing user updated to doctor
-        return NextResponse.json({
+        const response = NextResponse.json({
           success: true,
           user: {
             id: existingUserId,
@@ -223,6 +223,12 @@ export async function POST(request: Request) {
           },
           message: 'Existing account converted to doctor successfully',
         });
+
+        // Clear any auth cookies that might have been set
+        response.cookies.delete('sb-access-token');
+        response.cookies.delete('sb-refresh-token');
+
+        return response;
       }
 
       console.log('No existing user found, proceeding with creation');
@@ -231,12 +237,12 @@ export async function POST(request: Request) {
       // Continue with creation anyway, as we'll get a conflict error if the user exists
     }
 
-    // Create the doctor user with email_confirm = true to skip verification
-    console.log('Creating doctor user with email_confirm=true');
+    // Create the doctor user with email_confirm = false to prevent auto-login
+    console.log('Creating doctor user with email_confirm=false');
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // This is the key setting - skip email confirmation
+      email_confirm: false, // Set to false to prevent auto login after registration
       user_metadata: {
         first_name: firstName,
         last_name: lastName,
@@ -341,7 +347,9 @@ export async function POST(request: Request) {
     }
 
     console.log('Doctor user and profile created successfully');
-    return NextResponse.json({
+
+    // Create a response without session cookies
+    const response = NextResponse.json({
       success: true,
       user: {
         id: data.user.id,
@@ -349,13 +357,27 @@ export async function POST(request: Request) {
       },
       message: 'Doctor account created successfully',
     });
+
+    // Clear any auth cookies that might have been set
+    response.cookies.delete('sb-access-token');
+    response.cookies.delete('sb-refresh-token');
+
+    return response;
   } catch (err) {
     console.error('Unexpected error during doctor registration:', err);
-    return NextResponse.json(
+
+    // Create error response with cleared cookies
+    const errorResponse = NextResponse.json(
       {
         error: `Registration failed due to an unexpected error: ${err instanceof Error ? err.message : String(err)}`,
       },
       { status: 500 }
     );
+
+    // Clear any auth cookies that might have been set
+    errorResponse.cookies.delete('sb-access-token');
+    errorResponse.cookies.delete('sb-refresh-token');
+
+    return errorResponse;
   }
 }

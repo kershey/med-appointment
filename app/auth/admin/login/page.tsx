@@ -73,8 +73,21 @@ export default function AdminLogin() {
     setError(null);
     console.log('Admin login attempt with email:', data.email);
 
+    // Add timeout to prevent infinite loading state
+    const loginTimeout = setTimeout(() => {
+      if (isLoading) {
+        console.log('Login timeout reached - cancelling login attempt');
+        setIsLoading(false);
+        setError('Login timed out. Please try again or use "Forgot Password".');
+        toast.error('Login timeout');
+      }
+    }, 15000); // 15 seconds timeout
+
     try {
       const supabase = createClient();
+
+      // Add logging for debugging
+      console.log('Supabase client created, attempting login...');
 
       // First, try direct login without worrying about email confirmation
       console.log('Attempting direct signin with Supabase...');
@@ -83,6 +96,12 @@ export default function AdminLogin() {
           email: data.email,
           password: data.password,
         });
+
+      // Add additional debugging for the sign-in response
+      console.log(
+        'Sign-in response received:',
+        signInError ? 'Error occurred' : 'Success'
+      );
 
       if (signInError) {
         console.error('Admin login error details:', {
@@ -99,127 +118,51 @@ export default function AdminLogin() {
 
           // Check if this is an admin account
           try {
-            // First get all users and find the one matching this email
-            const { data: authUsers, error: authUsersError } =
-              await supabase.auth.admin.listUsers();
+            // Regular client can't use auth.admin - use the API endpoint instead
+            console.log('Checking if admin via API endpoint...');
 
-            if (authUsersError) {
-              console.error('Error accessing auth users:', authUsersError);
-              throw new Error('Failed to verify admin status');
-            }
+            // Call our server API to check and confirm the email
+            const confirmResult = await confirmAdminEmail(data.email);
+            console.log('Admin email confirmation result:', confirmResult);
 
-            // Find the auth user with this email
-            const authUser = authUsers?.users?.find(
-              (u) => u.email?.toLowerCase() === data.email.toLowerCase()
-            );
+            if (confirmResult.success) {
+              console.log('Successfully confirmed admin email server-side');
 
-            if (!authUser) {
-              console.error('Auth user not found with email:', data.email);
-              setError(
-                'Invalid email or password. Please check your credentials and try again.'
-              );
-              toast.error('Login failed');
-              return;
-            }
-
-            // Now check if this user has an admin profile
-            const { data: adminData, error: adminDataError } = await supabase
-              .from('profiles')
-              .select('id, role')
-              .eq('id', authUser.id)
-              .single();
-
-            if (adminDataError) {
-              console.error('Error fetching admin profile:', adminDataError);
-              throw new Error('Failed to verify admin status');
-            }
-
-            if (adminData?.role === 'admin') {
-              console.log('Admin account found with unconfirmed email');
-
-              // Try to confirm the email server-side first
-              const confirmResult = await confirmAdminEmail(data.email);
-
-              if (confirmResult.success) {
-                console.log('Successfully confirmed admin email server-side');
-
-                // Try logging in again now that the email is confirmed
-                const { data: retrySignInData, error: retrySignInError } =
-                  await supabase.auth.signInWithPassword({
-                    email: data.email,
-                    password: data.password,
-                  });
-
-                if (!retrySignInError && retrySignInData?.user) {
-                  console.log('Login successful after email confirmation');
-
-                  // Check if the user has an admin role
-                  const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('role, first_name, last_name')
-                    .eq('id', retrySignInData.user.id)
-                    .single();
-
-                  if (!profileError && profile?.role === 'admin') {
-                    console.log('Admin login successful, redirecting...');
-                    toast.success(
-                      `Welcome, ${profile.first_name}! Logged in as Administrator`
-                    );
-                    router.push('/admin');
-                    return;
-                  }
-                }
-
-                // If we're still here, something went wrong with the retry
-                console.log('Login retry failed even after email confirmation');
-              }
-
-              // Fall back to password reset if server-side confirmation fails
-              console.log('Falling back to password reset flow');
-
-              // Throttle the password reset request to avoid rate limits
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-
-              // Send a password reset link instead of trying to login directly
-              const { error: resetError } =
-                await supabase.auth.resetPasswordForEmail(data.email, {
-                  redirectTo: `${window.location.origin}/auth/admin/reset-password`,
+              // Retry the login now
+              console.log('Retrying login after email confirmation...');
+              const { data: retrySignInData, error: retrySignInError } =
+                await supabase.auth.signInWithPassword({
+                  email: data.email,
+                  password: data.password,
                 });
 
-              if (resetError) {
-                console.error('Failed to send password reset:', resetError);
-
-                // Check if we hit a rate limit
-                if (
-                  resetError.message.includes('rate limit') ||
-                  resetError.message.includes('too many requests')
-                ) {
-                  setError(
-                    'Email rate limit exceeded. Please wait a few minutes before requesting another password reset.'
-                  );
-                  toast.error('Rate limit exceeded');
-                } else {
-                  setError(
-                    'Your email has not been verified. We tried sending a password reset link but encountered an error. Please try the "Forgot Password" option.'
-                  );
-                  toast.error('Email verification required');
-                }
-              } else {
+              if (retrySignInError) {
+                console.error('Retry login failed:', retrySignInError);
                 setError(
-                  'Your admin account needs email verification. We have sent you a password reset link that will allow you to access your account immediately.'
+                  'Login failed after email confirmation. Please try again or use "Forgot Password".'
                 );
-                toast.info('Password reset link sent');
+                toast.error('Login failed');
+              } else if (retrySignInData?.user) {
+                console.log('Login successful after email confirmation');
+                // Proceed to admin dashboard
+                toast.success('Welcome! Logged in as Administrator');
+                router.push('/admin');
+                return;
               }
             } else {
-              setError(
-                'Invalid email or password. Please check your credentials and try again.'
+              // Email confirmation failed, suggest password reset
+              console.log(
+                'Email confirmation failed, suggesting password reset'
               );
-              toast.error('Login failed');
+              setError(
+                'Your email is not confirmed. Please use the "Forgot Password" option to reset your password and verify your email.'
+              );
+              toast.error('Email verification required');
             }
           } catch (err) {
-            console.error('Error during admin verification check:', err);
+            console.error('Error during admin verification:', err);
             setError(
-              'The email or password you entered is incorrect. Please try again.'
+              'An error occurred while checking your account. Please try again later or use "Forgot Password".'
             );
             toast.error('Login failed');
           }
@@ -380,6 +323,7 @@ export default function AdminLogin() {
       toast.error('Login failed');
     } finally {
       setIsLoading(false);
+      clearTimeout(loginTimeout); // Clear the timeout when login completes
     }
   };
 

@@ -14,14 +14,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Users,
-  UserCheck,
   Calendar,
   Clock,
+  FileText,
   RefreshCw,
   Settings,
-  FileText,
-  Shield,
+  UserCheck,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -170,11 +169,6 @@ export default function AdminDashboard() {
       icon: <UserCheck size={18} />,
     },
     {
-      href: '/admin/users',
-      label: 'User Management',
-      icon: <Shield size={18} />,
-    },
-    {
       href: '/admin/appointments',
       label: 'Appointments',
       icon: <Calendar size={18} />,
@@ -184,6 +178,11 @@ export default function AdminDashboard() {
       href: '/admin/settings',
       label: 'Settings',
       icon: <Settings size={18} />,
+    },
+    {
+      href: '/admin/fix-doctor-approvals',
+      label: 'Fix Approvals',
+      icon: <RefreshCw size={18} />,
     },
   ];
 
@@ -342,8 +341,8 @@ export default function AdminDashboard() {
                     >
                       <div>
                         <h3 className="font-medium">
-                          Dr. {doctor.profile.first_name}{' '}
-                          {doctor.profile.last_name}
+                          Dr. {doctor.profile?.first_name || ''}{' '}
+                          {doctor.profile?.last_name || ''}
                         </h3>
                         <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                           <span>{doctor.specialty}</span>
@@ -388,10 +387,10 @@ export default function AdminDashboard() {
                 <Button
                   variant="outline"
                   className="h-24 flex flex-col items-center justify-center"
-                  onClick={() => router.push('/admin/users')}
+                  onClick={() => router.push('/admin/doctor-approval')}
                 >
-                  <Shield className="h-6 w-6 mb-2" />
-                  <span>Manage Users</span>
+                  <UserCheck className="h-6 w-6 mb-2" />
+                  <span>Manage Doctor Approvals</span>
                 </Button>
                 <Button
                   variant="outline"

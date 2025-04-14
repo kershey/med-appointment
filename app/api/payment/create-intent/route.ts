@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import paymongoService from '@/lib/services/paymongo';
-import createPaymongoClient, { PaymentIntentData } from '@/lib/paymongo';
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
-    const { data: session } = await supabase.auth.getSession();
+    const { data: userData } = await supabase.auth.getUser();
 
     // Check authentication
-    if (!session.session) {
+    if (!userData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is authorized to access this appointment
-    if (appointment.patient_id !== session.session.user.id) {
+    if (appointment.patient_id !== userData.user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to access this appointment' },
         { status: 403 }
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest) {
       `Payment for appointment on ${appointment.appointment_date}`,
       {
         appointment_id: appointmentId,
-        patient_id: session.session.user.id,
+        patient_id: userData.user.id,
       }
     );
 

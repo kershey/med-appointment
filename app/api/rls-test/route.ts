@@ -10,11 +10,11 @@ type TableTestResult = {
 export async function GET() {
   try {
     const supabase = createClient();
-    const { data: session } = await supabase.auth.getSession();
+    const { data: userData } = await supabase.auth.getUser();
 
     // Check if we have an authenticated user
-    const isAuthenticated = !!session.session;
-    const userId = session.session?.user.id;
+    const isAuthenticated = !!userData.user;
+    const userId = userData.user?.id;
 
     // Test tables with different RLS policies
     const tables = [

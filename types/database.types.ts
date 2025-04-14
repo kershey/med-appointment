@@ -17,6 +17,7 @@ export interface Profile {
   gender?: string;
   role: UserRole;
   is_approved: boolean;
+  is_rejected?: boolean;
   avatar_url?: string;
   created_at: string;
   updated_at: string;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
+import { createClient } from '@/lib/supabase/client';
 import {
   Card,
   CardContent,
@@ -29,6 +30,22 @@ export default function RegistrationSuccess() {
       setAnimateIn(true);
     }, 100);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const ensureSignedOut = async () => {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+
+      if (data.session) {
+        console.log(
+          'Found active session on registration success page, signing out'
+        );
+        await supabase.auth.signOut();
+      }
+    };
+
+    ensureSignedOut();
   }, []);
 
   return (

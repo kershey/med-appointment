@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/context/AuthContext';
 import {
@@ -20,6 +20,23 @@ export function Navbar() {
   const { user, profile, signOut, isRole } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+
+  // Automatically sign out doctors with pending approval
+  // This provides an extra layer of protection
+  useEffect(() => {
+    // Only run this effect if we have user and profile data
+    if (user && profile) {
+      // If this is a doctor with pending approval
+      if (profile.role === 'doctor' && profile.is_approved === false) {
+        // Check if we're not already on the registration success page
+        if (!pathname.includes('/auth/doctor/registration-success')) {
+          console.log('Auto-signing out unapproved doctor from navbar');
+          // Sign them out automatically
+          signOut();
+        }
+      }
+    }
+  }, [user, profile, pathname, signOut]);
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
@@ -69,6 +86,9 @@ export function Navbar() {
     } else if (isRole('admin')) {
       navLinks = [...navLinks, ...adminLinks];
     }
+
+    // Don't add any role-specific links for unapproved doctors
+    // This is already handled by isRole() which checks approval status
   }
 
   const filteredLinks = navLinks.filter((link) => {
@@ -79,6 +99,24 @@ export function Navbar() {
 
   // Get dropdown menu items based on role
   const getDropdownMenuItems = () => {
+    // Check if user is a doctor with pending approval
+    if (profile?.role === 'doctor' && profile?.is_approved === false) {
+      return (
+        <>
+          <DropdownMenuLabel>Pending Approval</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-orange-600">
+            Your doctor account is awaiting approval
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/profile">Profile</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+        </>
+      );
+    }
+
     const commonItems = (
       <>
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
@@ -133,12 +171,6 @@ export function Navbar() {
           <DropdownMenuItem asChild>
             <Link href="/admin/doctor-approval">Doctor Approvals</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/admin/users">User Management</Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/admin/settings">System Settings</Link>
-          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
         </>
@@ -165,6 +197,18 @@ export function Navbar() {
         Profile
       </Link>
     );
+
+    // Check if user is a doctor with pending approval
+    if (profile?.role === 'doctor' && profile?.is_approved === false) {
+      return (
+        <>
+          <div className="text-orange-600 py-2 font-semibold">
+            Your doctor account is awaiting approval
+          </div>
+          {commonItems}
+        </>
+      );
+    }
 
     if (isRole('patient')) {
       return (
@@ -239,13 +283,6 @@ export function Navbar() {
             Doctor Approvals
           </Link>
           <Link
-            href="/admin/users"
-            className="text-gray-600 hover:text-primary transition-colors"
-            onClick={toggleMobileMenu}
-          >
-            User Management
-          </Link>
-          <Link
             href="/admin/settings"
             className="text-gray-600 hover:text-primary transition-colors"
             onClick={toggleMobileMenu}
@@ -286,25 +323,35 @@ export function Navbar() {
 
         <div className="hidden md:flex items-center space-x-4">
           {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="relative h-10 w-10 rounded-full"
-                >
-                  <Avatar>
-                    <AvatarImage
-                      src={profile?.avatar_url || ''}
-                      alt={profile?.first_name || ''}
-                    />
-                    <AvatarFallback>{getInitials()}</AvatarFallback>
-                  </Avatar>
+            profile?.role === 'doctor' && profile?.is_approved === false ? (
+              // For doctors with pending approval, only show the sign out button
+              <>
+                <Button variant="outline" onClick={() => signOut()}>
+                  Sign out
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {getDropdownMenuItems()}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </>
+            ) : (
+              // For approved users, show the profile dropdown
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative h-10 w-10 rounded-full"
+                  >
+                    <Avatar>
+                      <AvatarImage
+                        src={profile?.avatar_url || ''}
+                        alt={profile?.first_name || ''}
+                      />
+                      <AvatarFallback>{getInitials()}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {getDropdownMenuItems()}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
           ) : (
             <>
               <Button variant="outline" asChild>
@@ -372,7 +419,21 @@ export function Navbar() {
                   Admin Login
                 </Link>
               </div>
+            ) : profile?.role === 'doctor' && profile?.is_approved === false ? (
+              // For doctors with pending approval
+              <div className="pt-4 flex flex-col space-y-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    signOut();
+                    toggleMobileMenu();
+                  }}
+                >
+                  Sign out
+                </Button>
+              </div>
             ) : (
+              // For approved users
               <div className="pt-4 flex flex-col space-y-3">
                 {getMobileMenuItems()}
                 <Button

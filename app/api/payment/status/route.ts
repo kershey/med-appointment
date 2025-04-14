@@ -5,10 +5,10 @@ import paymongoService from '@/lib/services/paymongo';
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient();
-    const { data: session } = await supabase.auth.getSession();
+    const { data: userData } = await supabase.auth.getUser();
 
     // Check authentication
-    if (!session.session) {
+    if (!userData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -23,9 +23,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch payment intent from PayMongo
-    const paymentIntent = await paymongoService.getPaymentIntent(
-      paymentIntentId
-    );
+    const paymentIntent =
+      await paymongoService.getPaymentIntent(paymentIntentId);
 
     // Check payment status
     const status = paymentIntent.data.attributes.status;

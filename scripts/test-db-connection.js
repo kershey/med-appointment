@@ -168,8 +168,7 @@ async function main() {
 
     // Test auth
     console.log('\n🔍 Testing auth connection...');
-    const { data: authData, error: authError } =
-      await supabase.auth.getSession();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
 
     if (authError) {
       console.error('\n❌ Auth connection failed:');
@@ -177,10 +176,10 @@ async function main() {
       process.exit(1);
     }
 
-    const isAuthenticated = !!authData.session;
+    const isAuthenticated = !!authData.user;
     console.log(
       `✅ Auth connection successful! ${
-        isAuthenticated ? 'User is authenticated' : 'No active session'
+        isAuthenticated ? 'User is authenticated' : 'No active user'
       }`
     );
 

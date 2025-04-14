@@ -16,10 +16,10 @@ interface Appointment {
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
-    const { data: session } = await supabase.auth.getSession();
+    const { data: userData } = await supabase.auth.getUser();
 
     // Check authentication
-    if (!session.session) {
+    if (!userData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     if (
       appointmentError ||
       !typedAppointment ||
-      typedAppointment.patient_id !== session.session.user.id
+      typedAppointment.patient_id !== userData.user.id
     ) {
       return NextResponse.json(
         { error: 'Unauthorized to access this payment' },

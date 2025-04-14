@@ -5,10 +5,10 @@ import paymongoService from '@/lib/services/paymongo';
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
-    const { data: session } = await supabase.auth.getSession();
+    const { data: userData } = await supabase.auth.getUser();
 
     // Check authentication
-    if (!session.session) {
+    if (!userData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

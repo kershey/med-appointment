@@ -34,8 +34,7 @@ export async function GET() {
     }
 
     // Also check connection to auth schema
-    const { data: authData, error: authError } =
-      await supabase.auth.getSession();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
 
     if (authError) {
       console.error('Auth connection test failed:', authError);
@@ -65,7 +64,7 @@ export async function GET() {
       },
       auth: {
         connected: !authError,
-        session: authData?.session ? 'exists' : 'none',
+        user: authData?.user ? 'exists' : 'none',
       },
       rls: {
         profiles: {

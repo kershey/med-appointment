@@ -27,7 +27,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { createClient } from '@/lib/supabase/client';
 import { Stethoscope } from 'lucide-react';
 
 // Simplified validation schema
@@ -102,9 +101,6 @@ export default function DoctorRegister() {
       // Use the email as provided by the user
       console.log('Submitting registration with email:', email);
 
-      // Create Supabase client only for post-registration session checks
-      const supabase = createClient();
-
       // Instead of using the signUp function directly, use our server API route
       // that uses the admin API with email_confirm=true
       const response = await fetch('/api/auth/doctor-register', {
@@ -152,27 +148,13 @@ export default function DoctorRegister() {
 
       console.log('Doctor registration successful:', result);
 
-      // Try to sign in with the newly created credentials
-      // This works because we set email_confirm=true on the server
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        console.error('Sign-in after registration failed:', signInError);
-        // Even if sign-in fails, the registration succeeded, so show success
-        toast.success(
-          'Registration successful! Please sign in with your new account.'
-        );
-        router.push('/auth/doctor/registration-success');
-        setIsLoading(false);
-        return;
-      }
-
-      // We've successfully signed in
-      toast.success('Registration successful! Your account is ready to use.');
+      // Simply redirect to the success page without sign-out attempts
+      toast.success(
+        'Registration successful! Your account is pending approval by an administrator.'
+      );
       router.push('/auth/doctor/registration-success');
+      setIsLoading(false);
+      return;
     } catch (err) {
       setError(
         `Registration failed: ${
